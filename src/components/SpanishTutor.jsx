@@ -1,62 +1,132 @@
-// SpanishTutor.jsx with Button Toggle
+// ImprovedSpanishTutor.jsx with better silence detection
 import React, { useState, useEffect, useRef } from 'react';
+import useVoiceRecorder from './useVoiceRecorder'; // Import our custom hook
 import './SpanishTutor.css';
 
-// Make sure this port matches your actual backend API port
+// Base API URL - make sure this matches your backend
 const API_URL = 'http://localhost:8023';
 
+// Audio settings with improved values
+const AUDIO_SETTINGS = {
+  SILENCE_THRESHOLD: 20,
+  SPEECH_THRESHOLD: 50,
+  SILENCE_DURATION: 2000,
+  MIN_RECORDING_TIME: 500,
+  CHECK_INTERVAL: 50,
+  FFT_SIZE: 128,
+  SMOOTHING: 0.1
+};
+
 const SpanishTutor = () => {
+  // Core state
   const [message, setMessage] = useState('');
   const [conversationId, setConversationId] = useState(null);
   const [history, setHistory] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [tempo, setTempo] = useState(0.75);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [voiceInputEnabled, setVoiceInputEnabled] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
   const [difficulty, setDifficulty] = useState('beginner');
-  const [silenceDetected, setSilenceDetected] = useState(false);
-  const [statusMessage, setStatusMessage] = useState('');  // Status message for debugging
+  const [voiceInputEnabled, setVoiceInputEnabled] = useState(false);
+  const [debugMode, setDebugMode] = useState(true);
 
+  // Refs
   const audioRef = useRef(null);
   const messagesEndRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
-  const audioChunksRef = useRef([]);
-  const silenceDetectorRef = useRef(null);
-  const audioStreamRef = useRef(null);
+
+  // Use our custom voice recorder hook
+  const voiceRecorder = useVoiceRecorder({
+    silenceThreshold: AUDIO_SETTINGS.SILENCE_THRESHOLD,
+    speechThreshold: AUDIO_SETTINGS.SPEECH_THRESHOLD,
+    silenceDuration: AUDIO_SETTINGS.SILENCE_DURATION,
+    minRecordingTime: AUDIO_SETTINGS.MIN_RECORDING_TIME,
+    checkInterval: AUDIO_SETTINGS.CHECK_INTERVAL,
+    fftSize: AUDIO_SETTINGS.FFT_SIZE,
+    smoothing: AUDIO_SETTINGS.SMOOTHING
+  });
+
+  // Destructure values from the hook
+  const {
+    isRecording,
+    hasSpeech,
+    silenceDetected,
+    audioLevel,
+    peakLevel,
+    statusMessage,
+    silenceCountdown,
+    audioSamples,
+    isProcessing,
+    startRecording,
+    stopRecording,
+    getAudioBlob,
+    resetRecording,
+    setIsProcessing,
+    setStatusMessage
+  } = voiceRecorder;
+
+  // Handle media recorder stop event
+  useEffect(() => {
+    if (!isRecording && hasSpeech && !isProcessing) {
+      // This means recording was stopped after detecting speech
+      handleAudioData();
+    }
+  }, [isRecording, hasSpeech, isProcessing]);
+
+  // This effect watches for the end of silence countdown and triggers auto-submission
+  // when silence has been detected for long enough after speech was recorded
+  useEffect(() => {
+      // Only trigger auto-submission if ALL these conditions are true:
+      // 1. We are currently recording
+      // 2. We have detected actual speech during this recording (not just background noise)
+      // 3. We have detected silence after the speech
+      // 4. The silence countdown has reached zero, indicating silence duration threshold was met
+      if (isRecording && hasSpeech && silenceDetected && silenceCountdown === 0) {
+        console.log("🔇 Auto-stopping recording due to silence detection countdown reaching zero");
+
+        // Stop the recording, which will then trigger the handleAudioData function
+        // through the existing useEffect hook that watches for [isRecording, hasSpeech, isProcessing]
+        stopRecording();
+      }
+  }, [isRecording, hasSpeech, silenceDetected, silenceCountdown, stopRecording]);
+
+
+
+  // This effect acts as a safety mechanism in case the countdown doesn't trigger properly
+  // It sets a timer to force-stop recording after silence has been detected for the specified duration
+  useEffect(() => {
+      // Variable to store our timeout reference so we can clear it when needed
+      let silenceTimer = null;
+
+      // Only set up the timer if ALL these conditions are true:
+      // 1. We are currently recording
+      // 2. We have detected actual speech during this recording
+      // 3. We have detected silence after the speech
+      if (isRecording && hasSpeech && silenceDetected) {
+        console.log("🔇 Setting up silence safety timer");
+
+        // Create a timeout that will automatically stop the recording after the silence
+        // has persisted for the duration specified in AUDIO_SETTINGS.SILENCE_DURATION
+        silenceTimer = setTimeout(() => {
+          console.log("🔇 Safety timeout triggered: stopping recording after extended silence");
+          stopRecording();
+        }, AUDIO_SETTINGS.SILENCE_DURATION + 500); // Add 500ms buffer to ensure the countdown had time to reach 0
+      }
+
+      // Clean up function to clear the timeout when the component unmounts
+      // or when any of the dependencies change
+      return () => {
+        if (silenceTimer) {
+          console.log("🔇 Clearing silence safety timer");
+          clearTimeout(silenceTimer);
+        }
+      };
+  }, [isRecording, hasSpeech, silenceDetected, stopRecording]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [history]);
 
-  // Cleanup effect
-  useEffect(() => {
-    return () => {
-      stopMediaTracks();
-      clearSilenceDetector();
-    };
-  }, []);
-
-  const clearSilenceDetector = () => {
-    if (silenceDetectorRef.current) {
-      clearInterval(silenceDetectorRef.current);
-      silenceDetectorRef.current = null;
-    }
-  };
-
-  const stopMediaTracks = () => {
-    if (audioStreamRef.current) {
-      audioStreamRef.current.getTracks().forEach(track => track.stop());
-      audioStreamRef.current = null;
-      setStatusMessage('Microphone released');
-    }
-  };
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
+  // Text chat handler
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!message.trim() || isLoading) return;
@@ -70,22 +140,13 @@ const SpanishTutor = () => {
 
     setHistory(prev => [...prev, userMessage]);
     setIsLoading(true);
-    setMessage(''); // Clear input field immediately
+    setMessage('');
 
     try {
-      console.log("Sending request to:", `${API_URL}/chat`);
-      console.log("Request payload:", {
-        message,
-        conversation_id: conversationId,
-        tempo,
-        difficulty,
-      });
-
+      // Send chat request to API
       const response = await fetch(`${API_URL}/chat`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message,
           conversation_id: conversationId,
@@ -95,200 +156,70 @@ const SpanishTutor = () => {
       });
 
       if (!response.ok) {
-        // Get the error details if possible
-        const errorText = await response.text();
-        console.error("Server error response:", errorText);
         throw new Error(`Server responded with status: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log("Received response:", data);
 
-      // Update conversation ID if new
       if (!conversationId) {
         setConversationId(data.conversation_id);
       }
 
-      // Update history with full conversation history
       setHistory(data.history);
 
-      // Play audio response
       if (data.audio_url) {
-        // Ensure proper URL construction
         const audioUrl = `${API_URL}${data.audio_url.startsWith('/') ? data.audio_url : '/' + data.audio_url}`;
-        console.log("Playing audio from:", audioUrl);
-
         audioRef.current.src = audioUrl;
 
         try {
           await audioRef.current.play();
           setIsPlaying(true);
         } catch (audioError) {
-          console.error("Audio playback error:", audioError);
-          alert("Could not play audio response. Please check console for details.");
+          console.error("🔊 Audio playback error:", audioError);
         }
       }
-
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('❌ Error sending message:', error);
 
-      // Add an error message to the conversation
       setHistory(prev => [
         ...prev,
         {
           role: 'system',
-          content: `Error: ${error.message}. Please try again or refresh the page.`,
+          content: `Error: ${error.message}. Please try again.`,
           timestamp: new Date().toISOString()
         }
       ]);
-
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleAudioEnded = () => {
-    setIsPlaying(false);
-  };
-
-  // Voice recording functions with silence detection
-  const startRecording = async () => {
-    try {
-      // Clear any existing audio chunks
-      audioChunksRef.current = [];
-      setStatusMessage('Requesting microphone permissions...');
-
-      // First ensure we've cleaned up any previous streams
-      stopMediaTracks();
-      clearSilenceDetector();
-
-      // Request microphone permissions
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      audioStreamRef.current = stream;
-      setStatusMessage('Microphone access granted. Starting recording...');
-
-      // Setup audio analysis for silence detection
-      const audioContext = new AudioContext();
-      const audioSource = audioContext.createMediaStreamSource(stream);
-      const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 512;
-      analyser.smoothingTimeConstant = 0.4;
-      audioSource.connect(analyser);
-
-      const bufferLength = analyser.frequencyBinCount;
-      const dataArray = new Uint8Array(bufferLength);
-
-      // Variables for silence detection
-      let silenceStart = null;
-      const SILENCE_THRESHOLD = 10; // Adjust as needed for sensitivity
-      const SILENCE_DURATION = 2000; // 2 seconds of silence before auto-sending
-
-      // Function to check audio levels
-      silenceDetectorRef.current = setInterval(() => {
-        if (!isRecording) {
-          clearInterval(silenceDetectorRef.current);
-          setSilenceDetected(false);
-          return;
-        }
-
-        analyser.getByteFrequencyData(dataArray);
-
-        // Calculate audio level (average of frequency data)
-        const average = dataArray.reduce((sum, value) => sum + value, 0) / bufferLength;
-
-        // If below threshold, it's silence
-        if (average < SILENCE_THRESHOLD) {
-          if (!silenceStart) {
-            silenceStart = Date.now();
-            setSilenceDetected(true);
-            setStatusMessage('Silence detected...');
-          } else if (Date.now() - silenceStart > SILENCE_DURATION) {
-            // If silence for specified duration, stop recording
-            setStatusMessage('Long silence detected - auto-stopping');
-            clearInterval(silenceDetectorRef.current);
-            stopRecording();
-          }
-        } else {
-          // Reset silence timer if sound detected
-          silenceStart = null;
-          setSilenceDetected(false);
-        }
-      }, 100); // Check every 100ms
-
-      // Create and configure MediaRecorder
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = () => {
-        clearInterval(silenceDetectorRef.current);
-        setStatusMessage('Recording stopped, processing data...');
-        handleAudioData();
-      };
-
-      // Start recording
-      mediaRecorder.start(100); // Collect data in 100ms chunks
-      setIsRecording(true);
-      setStatusMessage('Recording started!');
-      console.log("Recording started with silence detection...");
-    } catch (error) {
-      console.error("Error starting recording:", error);
-      setStatusMessage(`Microphone error: ${error.message}`);
-      alert("Could not access microphone. Please ensure microphone permissions are enabled.");
-      setVoiceInputEnabled(false);
-      setIsRecording(false);
-    }
-  };
-
-  const stopRecording = () => {
-    setStatusMessage('Stopping recording...');
-    if (mediaRecorderRef.current && isRecording) {
-      try {
-        mediaRecorderRef.current.stop();
-        setStatusMessage('Recording stopped correctly.');
-        console.log("Recording stopped correctly.");
-      } catch (err) {
-        console.error("Error stopping recording:", err);
-        setStatusMessage(`Error stopping: ${err.message}`);
-      }
-
-      setIsRecording(false);
-      setSilenceDetected(false);
-    } else {
-      setStatusMessage('No active recorder to stop');
-    }
-  };
-
+  // Process recorded audio
   const handleAudioData = async () => {
-    if (audioChunksRef.current.length === 0) {
-      setStatusMessage('No audio data recorded');
-      console.log("No audio data recorded");
+    const audioBlob = getAudioBlob();
+
+    if (!audioBlob || audioBlob.size < 100) {
+      setStatusMessage('No audio data recorded or recording too short');
       return;
     }
 
     setIsLoading(true);
+    setIsProcessing(true);
     setStatusMessage('Processing audio data...');
 
     try {
-      // Create a blob from the audio chunks
-      const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+      console.log(`📊 Audio blob size: ${(audioBlob.size / 1024).toFixed(1)}KB`);
 
-      // Create a temporary loading message in the UI
+      // Show temporary message
       const tempMessage = {
         role: 'user',
         content: "🎤 Processing voice...",
         timestamp: new Date().toISOString(),
         isTemporary: true
       };
-
       setHistory(prev => [...prev, tempMessage]);
 
-      // Create form data to send to server
+      // Create form data for API
       const formData = new FormData();
       formData.append('audio_file', audioBlob, 'recording.webm');
       if (conversationId) {
@@ -297,31 +228,27 @@ const SpanishTutor = () => {
       formData.append('tempo', tempo);
       formData.append('difficulty', difficulty);
 
-      setStatusMessage('Sending audio to server...');
       // Send to server
+      setStatusMessage('Sending audio to server...');
       const response = await fetch(`${API_URL}/voice-input`, {
         method: 'POST',
         body: formData,
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Server error response:", errorText);
-        setStatusMessage(`Server error: ${response.status}`);
-        throw new Error(`Server responded with status: ${response.status}`);
+        throw new Error(`Server error: ${response.status}`);
       }
 
       const data = await response.json();
       setStatusMessage('Received response from server');
-      console.log("Received voice input response:", data);
+      console.log("✅ Server processed audio successfully");
 
-      // Remove temporary message and add transcribed text
+      // Update conversation
       setHistory(prev => {
-        // Filter out the temporary message
         const filtered = prev.filter(msg => !msg.isTemporary);
 
-        // Add the transcribed message if it exists
         if (data.transcribed_text) {
+          console.log(`🗣️ Transcribed: "${data.transcribed_text}"`);
           return [
             ...filtered,
             {
@@ -338,42 +265,33 @@ const SpanishTutor = () => {
             }
           ];
         }
-
         return filtered;
       });
 
-      // Update conversation ID if new
       if (!conversationId && data.conversation_id) {
         setConversationId(data.conversation_id);
       }
 
-      // Play audio response
+      // Play audio
       if (data.audio_url) {
         const audioUrl = `${API_URL}${data.audio_url.startsWith('/') ? data.audio_url : '/' + data.audio_url}`;
         setStatusMessage('Playing audio response...');
-        console.log("Playing audio from:", audioUrl);
 
         audioRef.current.src = audioUrl;
-
         try {
           await audioRef.current.play();
           setIsPlaying(true);
         } catch (audioError) {
-          console.error("Audio playback error:", audioError);
-          setStatusMessage(`Audio playback error: ${audioError.message}`);
-          alert("Could not play audio response. Please check console for details.");
+          console.error("🔊 Audio playback error:", audioError);
         }
       }
 
     } catch (error) {
-      console.error('Error processing voice input:', error);
+      console.error('❌ Error processing voice input:', error);
       setStatusMessage(`Processing error: ${error.message}`);
 
-      // Add an error message to the conversation
       setHistory(prev => {
-        // Filter out the temporary message
         const filtered = prev.filter(msg => !msg.isTemporary);
-
         return [
           ...filtered,
           {
@@ -383,10 +301,37 @@ const SpanishTutor = () => {
           }
         ];
       });
-
     } finally {
       setIsLoading(false);
+      setIsProcessing(false);
+      resetRecording();
     }
+  };
+
+  // UI Handlers
+  const handleAudioEnded = () => {
+    setIsPlaying(false);
+  };
+
+  const toggleVoiceInput = () => {
+    if (isRecording) {
+      stopRecording();
+    }
+    setVoiceInputEnabled(!voiceInputEnabled);
+    setStatusMessage(`Voice input ${!voiceInputEnabled ? 'enabled' : 'disabled'}`);
+  };
+
+  const handleVoiceButtonClick = (e) => {
+    e.preventDefault();
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  };
+
+  const toggleDebugMode = () => {
+    setDebugMode(!debugMode);
   };
 
   const renderMessageContent = (msg) => {
@@ -397,14 +342,12 @@ const SpanishTutor = () => {
     return (
       <>
         <p>{msg.content}</p>
-
         {msg.corrected && (
           <div className="corrections">
             <h4>Corrected Grammar:</h4>
             <p>{msg.corrected}</p>
           </div>
         )}
-
         {msg.natural && (
           <div className="alternatives">
             <h4>Native Expression:</h4>
@@ -415,60 +358,144 @@ const SpanishTutor = () => {
     );
   };
 
-  // Handle toggle using a simple button
-  const toggleVoiceInput = () => {
-    // Force stop recording if active
-    if (isRecording) {
-      stopRecording();
-    }
-
-    // Clean up resources if turning off
-    if (voiceInputEnabled) {
-      stopMediaTracks();
-      clearSilenceDetector();
-    }
-
-    // Toggle the state
-    setVoiceInputEnabled(!voiceInputEnabled);
-    setStatusMessage(`Voice input ${!voiceInputEnabled ? 'enabled' : 'disabled'}`);
-    console.log(`Voice input toggled: ${!voiceInputEnabled}`);
-  };
-
-  // Simplified voice button handler
-  const handleVoiceButtonClick = (e) => {
-    e.preventDefault(); // Prevent any default form behavior
-    console.log("Voice button clicked, recording state:", isRecording);
-
-    if (isRecording) {
-      stopRecording();
-    } else {
-      startRecording();
-    }
-  };
-
   return (
     <div className="spanish-tutor">
       <div className="header">
         <h1>Spanish Tutor</h1>
+        <div style={{ textAlign: 'right', marginBottom: '10px' }}>
+          <button
+            onClick={toggleDebugMode}
+            style={{
+              backgroundColor: debugMode ? '#ff5722' : '#f1f1f1',
+              color: debugMode ? 'white' : '#333',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '5px 10px',
+              cursor: 'pointer',
+              fontSize: '12px'
+            }}
+          >
+            {debugMode ? 'Hide Debug Info' : 'Show Debug Info'}
+          </button>
+        </div>
 
-        {/* Status message display */}
-        {statusMessage && (
+        {/* Enhanced debug information panel */}
+        {debugMode && (
           <div style={{
-            backgroundColor: '#f0f0f0',
-            padding: '8px',
-            margin: '8px 0',
+            backgroundColor: '#f5f5f5',
+            border: '1px solid #ddd',
             borderRadius: '5px',
-            fontSize: '14px',
-            color: '#333'
+            padding: '10px',
+            marginBottom: '15px'
           }}>
-            <strong>Status:</strong> {statusMessage}
-            <div style={{ fontSize: '12px', marginTop: '4px', color: '#666' }}>
-              Voice Input: {voiceInputEnabled ? 'ON' : 'OFF'} |
-              Recording: {isRecording ? 'YES' : 'NO'}
+            <h3 style={{ margin: '0 0 10px 0', fontSize: '16px' }}>📊 Audio Debug Info</h3>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+              <div>
+                <strong>Current Level:</strong> <span style={{ fontWeight: 'bold', color: '#2196f3' }}>{audioLevel.toFixed(1)}</span>
+              </div>
+              <div>
+                <strong>Peak Level:</strong> <span style={{ fontWeight: 'bold', color: '#f44336' }}>{peakLevel.toFixed(1)}</span>
+              </div>
+              <div>
+                <strong>Thresholds:</strong> Speech={AUDIO_SETTINGS.SPEECH_THRESHOLD}, Silence={AUDIO_SETTINGS.SILENCE_THRESHOLD}
+              </div>
+            </div>
+
+            {/* Audio level graph */}
+            <div style={{
+              height: '50px',
+              backgroundColor: '#eee',
+              marginBottom: '10px',
+              position: 'relative',
+              borderRadius: '4px',
+              overflow: 'hidden'
+            }}>
+              {/* Threshold lines */}
+              <div style={{
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                top: `${50 - (AUDIO_SETTINGS.SPEECH_THRESHOLD/40 * 50)}px`,
+                borderTop: '1px dashed green',
+                zIndex: 1
+              }} />
+              <div style={{
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                top: `${50 - (AUDIO_SETTINGS.SILENCE_THRESHOLD/40 * 50)}px`,
+                borderTop: '1px dashed orange',
+                zIndex: 1
+              }} />
+
+              {/* Sample bars */}
+              <div style={{ display: 'flex', height: '100%', alignItems: 'flex-end' }}>
+                {audioSamples.map((sample, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      width: `${100/50}%`,
+                      height: `${Math.min(sample/40 * 100, 100)}%`,
+                      backgroundColor: sample > AUDIO_SETTINGS.SPEECH_THRESHOLD
+                        ? '#4caf50'
+                        : sample > AUDIO_SETTINGS.SILENCE_THRESHOLD
+                          ? '#ff9800'
+                          : '#bdbdbd',
+                      transition: 'height 0.1s'
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* State indicators */}
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '5px' }}>
+              <div style={{
+                flex: 1,
+                padding: '6px 10px',
+                borderRadius: '4px',
+                backgroundColor: isRecording ? '#e8f5e9' : '#f5f5f5',
+                color: isRecording ? '#2e7d32' : '#757575',
+                border: '1px solid #ddd',
+                textAlign: 'center',
+                fontWeight: 'bold'
+              }}>
+                Recording: {isRecording ? 'YES' : 'NO'}
+              </div>
+              <div style={{
+                flex: 1,
+                padding: '6px 10px',
+                borderRadius: '4px',
+                backgroundColor: hasSpeech ? '#e8f5e9' : '#f5f5f5',
+                color: hasSpeech ? '#2e7d32' : '#757575',
+                border: '1px solid #ddd',
+                textAlign: 'center',
+                fontWeight: 'bold'
+              }}>
+                Speech: {hasSpeech ? 'YES' : 'NO'}
+              </div>
+              <div style={{
+                flex: 1,
+                padding: '6px 10px',
+                borderRadius: '4px',
+                backgroundColor: silenceDetected ? '#fff3e0' : '#f5f5f5',
+                color: silenceDetected ? '#e65100' : '#757575',
+                border: '1px solid #ddd',
+                textAlign: 'center',
+                fontWeight: 'bold'
+              }}>
+                Silence: {silenceDetected ? 'YES' : 'NO'}
+              </div>
+            </div>
+
+            <div style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
+              <strong>Status:</strong> {statusMessage}
             </div>
           </div>
         )}
 
+        {/* Control panel */}
         <div className="controls-container">
           <div className="tempo-control">
             <label htmlFor="tempo">Speech Speed:</label>
@@ -498,7 +525,6 @@ const SpanishTutor = () => {
             </select>
           </div>
 
-          {/* Replace the toggle switch with a simple button */}
           <div className="voice-input-toggle">
             <button
               onClick={toggleVoiceInput}
@@ -509,12 +535,6 @@ const SpanishTutor = () => {
                 border: '1px solid #ddd',
                 borderRadius: '5px',
                 padding: '6px 12px',
-                fontSize: '14px',
-                cursor: isLoading ? 'not-allowed' : 'pointer',
-                transition: 'all 0.3s ease',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px'
               }}
             >
               <span>Voice Input:</span>
@@ -524,6 +544,7 @@ const SpanishTutor = () => {
         </div>
       </div>
 
+      {/* Conversation area */}
       <div className="conversation">
         {history.length === 0 ? (
           <div className="empty-state">
@@ -540,6 +561,7 @@ const SpanishTutor = () => {
             </div>
           ))
         )}
+
         {isLoading && (
           <div className="message assistant loading">
             <div className="typing-indicator">
@@ -549,44 +571,149 @@ const SpanishTutor = () => {
             </div>
           </div>
         )}
+
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Input section */}
       <div className="input-container">
         {voiceInputEnabled ? (
           <div className="voice-input-controls">
+            {/* Record button with visual feedback */}
             <button
               className={`voice-record-button ${isRecording ? 'recording' : ''}`}
               onClick={handleVoiceButtonClick}
-              disabled={isLoading}
+              disabled={isLoading || isProcessing}
               type="button"
               style={{
-                // Additional inline styles to ensure the button is clearly visible
-                backgroundColor: isRecording ? '#e53935' : '#128c7e',
-                padding: '10px 20px',
-                margin: '10px auto',
-                display: 'block',
+                backgroundColor: isRecording ? '#e53935' : isProcessing ? '#FFA000' : '#128c7e',
+                color: 'white',
+                padding: '12px 20px',
+                border: 'none',
+                borderRadius: '20px',
+                cursor: 'pointer',
+                fontWeight: 'bold',
                 fontSize: '16px',
-                minWidth: '200px'
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto',
+                boxShadow: isRecording ? '0 0 0 rgba(229, 57, 53, 0.4)' : 'none',
+                animation: isRecording ? 'pulse 1.5s infinite' : 'none',
+                transition: 'all 0.2s ease',
+                width: '220px'
               }}
             >
-              {isRecording ? 'Stop Recording' : 'Start Recording'}
+              {isRecording
+                ? 'Stop Recording'
+                : isProcessing
+                  ? 'Processing...'
+                  : 'Start Recording'}
             </button>
+
+            {/* Visual recording indicators */}
             {isRecording && (
-              <div className={`recording-indicator ${silenceDetected ? 'silence-detected' : ''}`}
-                style={{
-                  // Ensure the indicator is clearly visible
+              <div style={{
+                marginTop: '15px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center'
+              }}>
+                {/* Main status indicator */}
+                <div style={{
+                  backgroundColor: silenceDetected ? '#fff3e0' : hasSpeech ? '#e8f5e9' : '#f5f5f5',
+                  color: silenceDetected ? '#e65100' : hasSpeech ? '#2e7d32' : '#666',
                   padding: '8px 16px',
-                  borderRadius: '5px',
-                  textAlign: 'center',
+                  borderRadius: '20px',
                   fontWeight: 'bold',
-                  backgroundColor: silenceDetected ? '#ffe082' : '#f1f1f1',
-                  color: silenceDetected ? '#ff6f00' : '#555'
-                }}
-              >
-                {silenceDetected
-                  ? 'Silence detected - will send shortly...'
-                  : 'Recording... Speak in Spanish'}
+                  marginBottom: '10px',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                  border: `1px solid ${silenceDetected ? '#ffccbc' : hasSpeech ? '#c8e6c9' : '#e0e0e0'}`,
+                  textAlign: 'center',
+                  width: '100%',
+                  maxWidth: '350px'
+                }}>
+                  {silenceDetected
+                    ? silenceCountdown !== null
+                      ? `Silence detected - auto-submitting in ${silenceCountdown}s`
+                      : 'Silence detected - will auto-submit shortly...'
+                    : hasSpeech
+                      ? 'Recording... Keep speaking or pause for auto-submit'
+                      : 'Waiting for speech...'}
+                </div>
+
+                {/* Real-time audio level meter */}
+                <div style={{
+                  width: '100%',
+                  maxWidth: '350px',
+                  height: '20px',
+                  backgroundColor: '#f5f5f5',
+                  borderRadius: '10px',
+                  overflow: 'hidden',
+                  marginBottom: '10px',
+                  border: '1px solid #e0e0e0'
+                }}>
+                  <div style={{
+                    height: '100%',
+                    width: `${Math.min(audioLevel * 5, 100)}%`,
+                    backgroundColor: audioLevel > AUDIO_SETTINGS.SPEECH_THRESHOLD
+                      ? '#4caf50'
+                      : audioLevel > AUDIO_SETTINGS.SILENCE_THRESHOLD
+                        ? '#ff9800'
+                        : '#bdbdbd',
+                    transition: 'width 0.1s'
+                  }} />
+                </div>
+
+                {/* Status flags */}
+                <div style={{
+                  display: 'flex',
+                  gap: '15px',
+                  justifyContent: 'center',
+                  width: '100%'
+                }}>
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: '10px 15px',
+                    borderRadius: '10px',
+                    backgroundColor: hasSpeech ? '#e8f5e9' : '#f5f5f5',
+                    color: hasSpeech ? '#2e7d32' : '#9e9e9e',
+                    opacity: hasSpeech ? 1 : 0.7,
+                    border: `1px solid ${hasSpeech ? '#c8e6c9' : '#e0e0e0'}`,
+                    flex: 1,
+                    maxWidth: '150px',
+                    boxShadow: hasSpeech ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
+                    transition: 'all 0.3s ease'
+                  }}>
+                    <span style={{ fontSize: '20px', marginBottom: '5px' }}>🎤</span>
+                    <span style={{ fontSize: '14px', fontWeight: 'bold' }}>
+                      Speech Detected
+                    </span>
+                  </div>
+
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: '10px 15px',
+                    borderRadius: '10px',
+                    backgroundColor: silenceDetected ? '#fff3e0' : '#f5f5f5',
+                    color: silenceDetected ? '#e65100' : '#9e9e9e',
+                    opacity: silenceDetected ? 1 : 0.7,
+                    border: `1px solid ${silenceDetected ? '#ffccbc' : '#e0e0e0'}`,
+                    flex: 1,
+                    maxWidth: '150px',
+                    boxShadow: silenceDetected ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
+                    transition: 'all 0.3s ease'
+                  }}>
+                    <span style={{ fontSize: '20px', marginBottom: '5px' }}>🔇</span>
+                    <span style={{ fontSize: '14px', fontWeight: 'bold' }}>
+                      Silence Detected
+                    </span>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -606,12 +733,14 @@ const SpanishTutor = () => {
         )}
       </div>
 
+      {/* Hidden audio player */}
       <audio
         ref={audioRef}
         onEnded={handleAudioEnded}
         controls={false}
       />
 
+      {/* Audio controls */}
       {isPlaying && (
         <div className="audio-controls">
           <button onClick={() => audioRef.current.pause()}>
