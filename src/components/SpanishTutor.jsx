@@ -2,15 +2,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import useVoiceRecorder from './useVoiceRecorder'; // Import our custom hook
 import './SpanishTutor.css';
+import ToggleSwitch from './ToggleSwitch';
 
 // Base API URL - make sure this matches your backend
-const API_URL = 'http://localhost:8023';
+const API_URL = 'http://localhost:8028';
 
 // Audio settings with improved values
 const AUDIO_SETTINGS = {
-  SILENCE_THRESHOLD: 20,
-  SPEECH_THRESHOLD: 50,
-  SILENCE_DURATION: 2000,
+  SILENCE_THRESHOLD: 40,
+  SPEECH_THRESHOLD: 70,
+  SILENCE_DURATION: 1500,
   MIN_RECORDING_TIME: 500,
   CHECK_INTERVAL: 50,
   FFT_SIZE: 128,
@@ -28,7 +29,8 @@ const SpanishTutor = () => {
   const [difficulty, setDifficulty] = useState('beginner');
   const [voiceInputEnabled, setVoiceInputEnabled] = useState(false);
   const [debugMode, setDebugMode] = useState(true);
-
+  // Add this to the existing state declarations
+  const [continuousConversation, setContinuousConversation] = useState(false);
   // Refs
   const audioRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -310,7 +312,15 @@ const SpanishTutor = () => {
 
   // UI Handlers
   const handleAudioEnded = () => {
-    setIsPlaying(false);
+      setIsPlaying(false);
+
+      // Add this block for continuous conversation
+      if (continuousConversation && voiceInputEnabled) {
+        // Ensure we're not already recording or processing
+        if (!isRecording && !isProcessing) {
+          startRecording();
+        }
+      }
   };
 
   const toggleVoiceInput = () => {
@@ -399,6 +409,20 @@ const SpanishTutor = () => {
               </div>
               <div>
                 <strong>Thresholds:</strong> Speech={AUDIO_SETTINGS.SPEECH_THRESHOLD}, Silence={AUDIO_SETTINGS.SILENCE_THRESHOLD}
+              </div>
+              <div style={{
+                marginTop: '10px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <strong>Continuous Conversation:</strong>
+                <span style={{
+                  color: continuousConversation ? '#4caf50' : '#f44336',
+                  fontWeight: 'bold'
+                }}>
+                  {continuousConversation ? 'ON' : 'OFF'}
+                </span>
               </div>
             </div>
 
@@ -541,6 +565,23 @@ const SpanishTutor = () => {
               <strong>{voiceInputEnabled ? 'ON' : 'OFF'}</strong>
             </button>
           </div>
+          {voiceInputEnabled && (
+          <div className="continuous-conversation-toggle" style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '10px',
+            marginTop: '10px',
+            width: '100%'
+          }}>
+            <ToggleSwitch
+              isOn={continuousConversation}
+              handleToggle={() => setContinuousConversation(!continuousConversation)}
+              label="Continuous Conversation"
+              disabled={!voiceInputEnabled}
+            />
+          </div>
+        )}
         </div>
       </div>
 
