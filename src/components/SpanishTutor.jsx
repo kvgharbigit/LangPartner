@@ -1,6 +1,8 @@
-// Complete Modified SpanishTutor.jsx
+// SpanishTutor.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import useVoiceRecorder from './useVoiceRecorder';
+import { Conversation } from './ChatComponents';
+import ChatInput from './ChatInput';
 import './SpanishTutor.css';
 
 const API_URL = 'http://localhost:8036';
@@ -71,29 +73,6 @@ const StatusPill = ({ active, icon, label }) => {
     <div className={`status-pill ${active ? 'active' : ''}`}>
       <div className="status-icon">{icon}</div>
       <div className="status-label">{label}</div>
-    </div>
-  );
-};
-
-// Message Component
-const Message = ({ message }) => {
-  return (
-    <div className={`message ${message.role}`}>
-      <div className="message-content">
-        <p>{message.content}</p>
-        {message.corrected && (
-          <div className="corrections">
-            <h4>Corrected Grammar:</h4>
-            <p>{message.corrected}</p>
-          </div>
-        )}
-        {message.natural && (
-          <div className="alternatives">
-            <h4>Native Expression:</h4>
-            <p>{message.natural}</p>
-          </div>
-        )}
-      </div>
     </div>
   );
 };
@@ -211,20 +190,18 @@ const SpanishTutor = ({ nativeLanguage = 'en', targetLanguage = 'es' }) => {
   }, [targetLanguage]);
 
   // Text chat handler
-  const handleSubmit = async (e) => {
-    e?.preventDefault();
-    if (!message.trim() || isLoading) return;
+  const handleSubmit = async (inputMessage) => {
+    if (!inputMessage.trim() || isLoading) return;
 
     // Add user message to UI immediately
     const userMessage = {
       role: 'user',
-      content: message,
+      content: inputMessage,
       timestamp: new Date().toISOString()
     };
 
     setHistory(prev => [...prev, userMessage]);
     setIsLoading(true);
-    setMessage('');
 
     try {
       // Send chat request to API
@@ -232,7 +209,7 @@ const SpanishTutor = ({ nativeLanguage = 'en', targetLanguage = 'es' }) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message,
+          message: inputMessage,
           conversation_id: conversationId,
           tempo,
           difficulty,
@@ -535,35 +512,12 @@ const SpanishTutor = ({ nativeLanguage = 'en', targetLanguage = 'es' }) => {
         </div>
       )}
 
-      <div className="conversation-container">
-        {history.length === 0 ? (
-          <div className="empty-state">
-            <div className="welcome-icon">👋</div>
-            <h2>{targetLanguage === 'es' ? '¡Hola! Soy tu tutor de español.' : 'Hello! I am your English tutor.'}</h2>
-            <p>{targetLanguage === 'es'
-              ? 'Start practicing your Spanish conversation skills!'
-              : 'Start practicing your English conversation skills!'}
-            </p>
-          </div>
-        ) : (
-          <div className="messages">
-            {history.map((msg, index) => (
-              <Message key={index} message={msg} />
-            ))}
-
-            {isLoading && (
-              <div className="message assistant loading">
-                <div className="typing-indicator">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-        )}
-      </div>
+      <Conversation
+        history={history}
+        isLoading={isLoading}
+        nativeLanguage={nativeLanguage}
+        targetLanguage={targetLanguage}
+      />
 
       <div className="input-container">
         {voiceInputEnabled ? (
@@ -619,23 +573,11 @@ const SpanishTutor = ({ nativeLanguage = 'en', targetLanguage = 'es' }) => {
             )}
           </div>
         ) : (
-          <form className="text-input-form" onSubmit={handleSubmit}>
-            <input
-              type="text"
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder={targetLanguage === 'es' ? "Escribe tu mensaje aquí..." : "Type your message here..."}
-              disabled={isLoading}
-              className="text-input"
-            />
-            <button
-              type="submit"
-              disabled={isLoading || !message.trim()}
-              className="send-button"
-            >
-              {targetLanguage === 'es' ? 'Enviar' : 'Send'}
-            </button>
-          </form>
+          <ChatInput
+            onSubmit={handleSubmit}
+            disabled={isLoading}
+            targetLanguage={targetLanguage}
+          />
         )}
       </div>
 
