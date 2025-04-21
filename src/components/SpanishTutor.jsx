@@ -5,7 +5,7 @@ import './SpanishTutor.css';
 import ToggleSwitch from './ToggleSwitch';
 
 // Base API URL - make sure this matches your backend
-const API_URL = 'http://localhost:8028';
+const API_URL = 'http://localhost:8036';
 
 // Audio settings with improved values
 const AUDIO_SETTINGS = {
