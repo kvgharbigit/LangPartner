@@ -811,9 +811,20 @@ body {
 .change-language-btn:hover {
   background-color: var(--primary-light);
   color: white;
+}/* Styles for highlighted differences */
+.message-annotation .annotation-text strong {
+  font-weight: bold;
+  text-decoration: underline;
+  opacity: 0.8;
 }
 
-/* Message-specific styles */
+.message.user .message-annotation .annotation-text strong {
+  color: white;
+  text-decoration: underline;
+  opacity: 0.9;
+}
+
+/* Message content base styles */
 .message-content {
   display: flex;
   flex-direction: column;
@@ -826,34 +837,101 @@ body {
 }
 
 .message-annotation {
+  display: flex;
+  align-items: center;
   margin-top: 0.25rem;
-  padding: 0.5rem;
-  border-radius: var(--rounded-sm);
   font-size: 0.8rem;
   max-width: 100%;
   overflow-wrap: break-word;
 }
 
-.message-annotation h4 {
-  margin: 0 0 0.25rem 0;
-  font-size: 0.75rem;
+.message-annotation .annotation-label {
   font-weight: 600;
+  margin-right: 0.5rem;
   opacity: 0.7;
+  min-width: 60px; /* Ensure consistent label width */
 }
 
-.message-annotation.grammar {
-  background-color: rgba(255, 152, 0, 0.1);
-  border-left: 3px solid var(--warning);
-  color: var(--warning);
+.message-annotation .annotation-text {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 
-.message-annotation.native {
-  background-color: rgba(76, 175, 80, 0.1);
-  border-left: 3px solid var(--success);
-  color: var(--success);
+/* Non-identical hint styles */
+.grammar-hint .annotation-label {
+  color: #2196F3;  /* Vibrant Blue */
 }
 
-.message.user .message-annotation {
-  background-color: rgba(255, 255, 255, 0.2);
+.native-hint .annotation-label {
+  color: #9C27B0;  /* Deep Purple */
+}
+
+.grammar-hint .annotation-text {
+  color: #2196F3;  /* Vibrant Blue */
+}
+
+.native-hint .annotation-text {
+  color: #9C27B0;  /* Deep Purple */
+}
+
+/* Identical hint styles */
+.grammar-hint.identical .annotation-label,
+.native-hint.identical .annotation-label {
+  color: #4CAF50;  /* Green */
+}
+
+.grammar-hint.identical .annotation-text,
+.native-hint.identical .annotation-text {
+  color: #4CAF50;  /* Green */
+  font-weight: bold;
+}
+
+.native-match-icon {
+  margin-left: 0.25rem;
+  font-size: 0.9em;
+  font-weight: bold;
+}
+
+/* User message non-identical styles */
+.message.user .message-annotation .annotation-text {
   color: rgba(255, 255, 255, 0.8);
+}
+
+.message.user .message-annotation .annotation-label {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.message.user .grammar-hint .annotation-text {
+  color: #90CAF9;  /* Light Blue for user messages */
+}
+
+.message.user .native-hint .annotation-text {
+  color: #E1BEE7;  /* Light Purple for user messages */
+}
+
+.message.user .grammar-hint .annotation-label {
+  color: #90CAF9;  /* Light Blue for user messages */
+}
+
+.message.user .native-hint .annotation-label {
+  color: #E1BEE7;  /* Light Purple for user messages */
+}
+
+/* User message identical styles */
+.message.user .grammar-hint.identical .annotation-text,
+.message.user .native-hint.identical .annotation-text {
+  color: white;
+  font-weight: bold;
+}
+
+.message.user .grammar-hint.identical .annotation-label,
+.message.user .native-hint.identical .annotation-label {
+  color: white;
+  opacity: 1;
+}
+
+.message.user .native-match-icon {
+  color: white;
 }
