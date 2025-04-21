@@ -1,4 +1,4 @@
-// ImprovedSpanishTutor.jsx with better UI
+// Complete Modified SpanishTutor.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import useVoiceRecorder from './useVoiceRecorder';
 import './SpanishTutor.css';
@@ -98,7 +98,7 @@ const Message = ({ message }) => {
   );
 };
 
-const SpanishTutor = () => {
+const SpanishTutor = ({ nativeLanguage = 'en', targetLanguage = 'es' }) => {
   // Core state
   const [message, setMessage] = useState('');
   const [conversationId, setConversationId] = useState(null);
@@ -114,6 +114,18 @@ const SpanishTutor = () => {
   // Refs
   const audioRef = useRef(null);
   const messagesEndRef = useRef(null);
+
+  // Get language display info
+  const getLanguageInfo = (code) => {
+    const languages = {
+      'en': { name: 'English', flag: '🇬🇧' },
+      'es': { name: 'Spanish', flag: '🇪🇸' }
+    };
+    return languages[code] || { name: 'Unknown', flag: '🏳️' };
+  };
+
+  const nativeInfo = getLanguageInfo(nativeLanguage);
+  const targetInfo = getLanguageInfo(targetLanguage);
 
   // Use our custom voice recorder hook
   const voiceRecorder = useVoiceRecorder({
@@ -182,6 +194,22 @@ const SpanishTutor = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [history]);
 
+  // Welcome message when the component mounts
+  useEffect(() => {
+    // Only show welcome message if this is a new conversation
+    if (history.length === 0) {
+      const welcomeMessage = {
+        role: 'assistant',
+        content: targetLanguage === 'es'
+          ? '¡Hola! Soy tu tutor de español. ¿Cómo puedo ayudarte hoy?'
+          : 'Hello! I\'m your English tutor. How can I help you today?',
+        timestamp: new Date().toISOString()
+      };
+
+      setHistory([welcomeMessage]);
+    }
+  }, [targetLanguage]);
+
   // Text chat handler
   const handleSubmit = async (e) => {
     e?.preventDefault();
@@ -208,6 +236,8 @@ const SpanishTutor = () => {
           conversation_id: conversationId,
           tempo,
           difficulty,
+          native_language: nativeLanguage,
+          target_language: targetLanguage,
         }),
       });
 
@@ -281,6 +311,8 @@ const SpanishTutor = () => {
       }
       formData.append('tempo', tempo);
       formData.append('difficulty', difficulty);
+      formData.append('native_language', nativeLanguage);
+      formData.append('target_language', targetLanguage);
 
       // Send to server
       setStatusMessage('Sending audio to server...');
@@ -393,8 +425,8 @@ const SpanishTutor = () => {
     <div className="tutor-container">
       <div className="tutor-header">
         <div className="tutor-logo">
-          <span className="flag">🇪🇸</span>
-          <h1>Spanish Tutor</h1>
+          <span className="flag">{targetInfo.flag}</span>
+          <h1>{targetInfo.name} Tutor</h1>
         </div>
 
         <div className="header-controls">
@@ -507,8 +539,11 @@ const SpanishTutor = () => {
         {history.length === 0 ? (
           <div className="empty-state">
             <div className="welcome-icon">👋</div>
-            <h2>¡Hola! Soy tu tutor de español.</h2>
-            <p>Start practicing your Spanish conversation skills!</p>
+            <h2>{targetLanguage === 'es' ? '¡Hola! Soy tu tutor de español.' : 'Hello! I am your English tutor.'}</h2>
+            <p>{targetLanguage === 'es'
+              ? 'Start practicing your Spanish conversation skills!'
+              : 'Start practicing your English conversation skills!'}
+            </p>
           </div>
         ) : (
           <div className="messages">
@@ -589,7 +624,7 @@ const SpanishTutor = () => {
               type="text"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              placeholder="Escribe tu mensaje aquí..."
+              placeholder={targetLanguage === 'es' ? "Escribe tu mensaje aquí..." : "Type your message here..."}
               disabled={isLoading}
               className="text-input"
             />
@@ -598,7 +633,7 @@ const SpanishTutor = () => {
               disabled={isLoading || !message.trim()}
               className="send-button"
             >
-              Enviar
+              {targetLanguage === 'es' ? 'Enviar' : 'Send'}
             </button>
           </form>
         )}

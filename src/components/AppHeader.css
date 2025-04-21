@@ -1,0 +1,52 @@
+/* App Header Styles */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.app-header {
+  background-color: white;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  padding: 0.75rem 1.5rem;
+  z-index: 10;
+}
+
+.language-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.language-combo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.25rem;
+}
+
+.native-language, .target-language {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.arrow {
+  color: var(--gray-500);
+}
+
+.change-language-btn {
+  background-color: transparent;
+  color: var(--primary);
+  border: 1px solid var(--primary);
+  border-radius: 50px;
+  padding: 0.4rem 1rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: var(--transition-base);
+}
+
+.change-language-btn:hover {
+  background-color: var(--primary-light);
+  color: white;
+}
