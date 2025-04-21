@@ -1,13 +1,11 @@
-// ImprovedSpanishTutor.jsx with better silence detection
+// ImprovedSpanishTutor.jsx with better UI
 import React, { useState, useEffect, useRef } from 'react';
-import useVoiceRecorder from './useVoiceRecorder'; // Import our custom hook
+import useVoiceRecorder from './useVoiceRecorder';
 import './SpanishTutor.css';
-import ToggleSwitch from './ToggleSwitch';
 
-// Base API URL - make sure this matches your backend
 const API_URL = 'http://localhost:8036';
 
-// Audio settings with improved values
+// Audio settings
 const AUDIO_SETTINGS = {
   SILENCE_THRESHOLD: 40,
   SPEECH_THRESHOLD: 70,
@@ -16,6 +14,88 @@ const AUDIO_SETTINGS = {
   CHECK_INTERVAL: 50,
   FFT_SIZE: 128,
   SMOOTHING: 0.1
+};
+
+// Toggle Switch Component
+const ToggleSwitch = ({ isOn, handleToggle, label = '', disabled = false }) => {
+  return (
+    <div className="toggle-switch-component">
+      <label className="label">{label}</label>
+      <label className="switch">
+        <input
+          type="checkbox"
+          checked={isOn}
+          onChange={handleToggle}
+          disabled={disabled}
+        />
+        <span className="slider"></span>
+      </label>
+    </div>
+  );
+};
+
+// Audio Visualizer Component
+const AudioVisualizer = ({ audioSamples, speechThreshold, silenceThreshold }) => {
+  return (
+    <div className="audio-visualizer">
+      <div className="threshold-line speech" style={{ bottom: `${speechThreshold * 100 / 120}%` }}></div>
+      <div className="threshold-line silence" style={{ bottom: `${silenceThreshold * 100 / 120}%` }}></div>
+      <div className="sample-bars">
+        {audioSamples.length === 0 ? (
+          // Display placeholder bars when no samples are available
+          Array.from({ length: 50 }).map((_, index) => (
+            <div
+              key={index}
+              className="sample-bar"
+              style={{ height: '0%' }}
+            />
+          ))
+        ) : (
+          // Display actual audio sample bars
+          audioSamples.map((sample, index) => (
+            <div
+              key={index}
+              className={`sample-bar ${sample > speechThreshold ? 'speech' : sample > silenceThreshold ? 'medium' : 'low'}`}
+              style={{ height: `${Math.min(sample * 100 / 120, 100)}%` }}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Status Pill Component
+const StatusPill = ({ active, icon, label }) => {
+  return (
+    <div className={`status-pill ${active ? 'active' : ''}`}>
+      <div className="status-icon">{icon}</div>
+      <div className="status-label">{label}</div>
+    </div>
+  );
+};
+
+// Message Component
+const Message = ({ message }) => {
+  return (
+    <div className={`message ${message.role}`}>
+      <div className="message-content">
+        <p>{message.content}</p>
+        {message.corrected && (
+          <div className="corrections">
+            <h4>Corrected Grammar:</h4>
+            <p>{message.corrected}</p>
+          </div>
+        )}
+        {message.natural && (
+          <div className="alternatives">
+            <h4>Native Expression:</h4>
+            <p>{message.natural}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 };
 
 const SpanishTutor = () => {
@@ -28,9 +108,9 @@ const SpanishTutor = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [difficulty, setDifficulty] = useState('beginner');
   const [voiceInputEnabled, setVoiceInputEnabled] = useState(false);
-  const [debugMode, setDebugMode] = useState(true);
-  // Add this to the existing state declarations
+  const [debugMode, setDebugMode] = useState(false);
   const [continuousConversation, setContinuousConversation] = useState(false);
+
   // Refs
   const audioRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -74,53 +154,27 @@ const SpanishTutor = () => {
   }, [isRecording, hasSpeech, isProcessing]);
 
   // This effect watches for the end of silence countdown and triggers auto-submission
-  // when silence has been detected for long enough after speech was recorded
   useEffect(() => {
-      // Only trigger auto-submission if ALL these conditions are true:
-      // 1. We are currently recording
-      // 2. We have detected actual speech during this recording (not just background noise)
-      // 3. We have detected silence after the speech
-      // 4. The silence countdown has reached zero, indicating silence duration threshold was met
-      if (isRecording && hasSpeech && silenceDetected && silenceCountdown === 0) {
-        console.log("🔇 Auto-stopping recording due to silence detection countdown reaching zero");
-
-        // Stop the recording, which will then trigger the handleAudioData function
-        // through the existing useEffect hook that watches for [isRecording, hasSpeech, isProcessing]
-        stopRecording();
-      }
+    if (isRecording && hasSpeech && silenceDetected && silenceCountdown === 0) {
+      stopRecording();
+    }
   }, [isRecording, hasSpeech, silenceDetected, silenceCountdown, stopRecording]);
 
-
-
-  // This effect acts as a safety mechanism in case the countdown doesn't trigger properly
-  // It sets a timer to force-stop recording after silence has been detected for the specified duration
+  // Silence safety mechanism
   useEffect(() => {
-      // Variable to store our timeout reference so we can clear it when needed
-      let silenceTimer = null;
+    let silenceTimer = null;
 
-      // Only set up the timer if ALL these conditions are true:
-      // 1. We are currently recording
-      // 2. We have detected actual speech during this recording
-      // 3. We have detected silence after the speech
-      if (isRecording && hasSpeech && silenceDetected) {
-        console.log("🔇 Setting up silence safety timer");
+    if (isRecording && hasSpeech && silenceDetected) {
+      silenceTimer = setTimeout(() => {
+        stopRecording();
+      }, AUDIO_SETTINGS.SILENCE_DURATION + 500);
+    }
 
-        // Create a timeout that will automatically stop the recording after the silence
-        // has persisted for the duration specified in AUDIO_SETTINGS.SILENCE_DURATION
-        silenceTimer = setTimeout(() => {
-          console.log("🔇 Safety timeout triggered: stopping recording after extended silence");
-          stopRecording();
-        }, AUDIO_SETTINGS.SILENCE_DURATION + 500); // Add 500ms buffer to ensure the countdown had time to reach 0
+    return () => {
+      if (silenceTimer) {
+        clearTimeout(silenceTimer);
       }
-
-      // Clean up function to clear the timeout when the component unmounts
-      // or when any of the dependencies change
-      return () => {
-        if (silenceTimer) {
-          console.log("🔇 Clearing silence safety timer");
-          clearTimeout(silenceTimer);
-        }
-      };
+    };
   }, [isRecording, hasSpeech, silenceDetected, stopRecording]);
 
   // Scroll to bottom when messages change
@@ -130,7 +184,7 @@ const SpanishTutor = () => {
 
   // Text chat handler
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    e?.preventDefault();
     if (!message.trim() || isLoading) return;
 
     // Add user message to UI immediately
@@ -177,11 +231,11 @@ const SpanishTutor = () => {
           await audioRef.current.play();
           setIsPlaying(true);
         } catch (audioError) {
-          console.error("🔊 Audio playback error:", audioError);
+          console.error("Audio playback error:", audioError);
         }
       }
     } catch (error) {
-      console.error('❌ Error sending message:', error);
+      console.error('Error sending message:', error);
 
       setHistory(prev => [
         ...prev,
@@ -210,8 +264,6 @@ const SpanishTutor = () => {
     setStatusMessage('Processing audio data...');
 
     try {
-      console.log(`📊 Audio blob size: ${(audioBlob.size / 1024).toFixed(1)}KB`);
-
       // Show temporary message
       const tempMessage = {
         role: 'user',
@@ -243,14 +295,12 @@ const SpanishTutor = () => {
 
       const data = await response.json();
       setStatusMessage('Received response from server');
-      console.log("✅ Server processed audio successfully");
 
       // Update conversation
       setHistory(prev => {
         const filtered = prev.filter(msg => !msg.isTemporary);
 
         if (data.transcribed_text) {
-          console.log(`🗣️ Transcribed: "${data.transcribed_text}"`);
           return [
             ...filtered,
             {
@@ -284,12 +334,12 @@ const SpanishTutor = () => {
           await audioRef.current.play();
           setIsPlaying(true);
         } catch (audioError) {
-          console.error("🔊 Audio playback error:", audioError);
+          console.error("Audio playback error:", audioError);
         }
       }
 
     } catch (error) {
-      console.error('❌ Error processing voice input:', error);
+      console.error('Error processing voice input:', error);
       setStatusMessage(`Processing error: ${error.message}`);
 
       setHistory(prev => {
@@ -312,15 +362,14 @@ const SpanishTutor = () => {
 
   // UI Handlers
   const handleAudioEnded = () => {
-      setIsPlaying(false);
+    setIsPlaying(false);
 
-      // Add this block for continuous conversation
-      if (continuousConversation && voiceInputEnabled) {
-        // Ensure we're not already recording or processing
-        if (!isRecording && !isProcessing) {
-          startRecording();
-        }
+    // Start recording again if continuous conversation is enabled
+    if (continuousConversation && voiceInputEnabled) {
+      if (!isRecording && !isProcessing) {
+        startRecording();
       }
+    }
   };
 
   const toggleVoiceInput = () => {
@@ -340,208 +389,21 @@ const SpanishTutor = () => {
     }
   };
 
-  const toggleDebugMode = () => {
-    setDebugMode(!debugMode);
-  };
-
-  const renderMessageContent = (msg) => {
-    if (msg.role === 'user') {
-      return <p>{msg.content}</p>;
-    }
-
-    return (
-      <>
-        <p>{msg.content}</p>
-        {msg.corrected && (
-          <div className="corrections">
-            <h4>Corrected Grammar:</h4>
-            <p>{msg.corrected}</p>
-          </div>
-        )}
-        {msg.natural && (
-          <div className="alternatives">
-            <h4>Native Expression:</h4>
-            <p>{msg.natural}</p>
-          </div>
-        )}
-      </>
-    );
-  };
-
   return (
-    <div className="spanish-tutor">
-      <div className="header">
-        <h1>Spanish Tutor</h1>
-        <div style={{ textAlign: 'right', marginBottom: '10px' }}>
-          <button
-            onClick={toggleDebugMode}
-            style={{
-              backgroundColor: debugMode ? '#ff5722' : '#f1f1f1',
-              color: debugMode ? 'white' : '#333',
-              border: 'none',
-              borderRadius: '4px',
-              padding: '5px 10px',
-              cursor: 'pointer',
-              fontSize: '12px'
-            }}
-          >
-            {debugMode ? 'Hide Debug Info' : 'Show Debug Info'}
-          </button>
+    <div className="tutor-container">
+      <div className="tutor-header">
+        <div className="tutor-logo">
+          <span className="flag">🇪🇸</span>
+          <h1>Spanish Tutor</h1>
         </div>
 
-        {/* Enhanced debug information panel */}
-        {debugMode && (
-          <div style={{
-            backgroundColor: '#f5f5f5',
-            border: '1px solid #ddd',
-            borderRadius: '5px',
-            padding: '10px',
-            marginBottom: '15px'
-          }}>
-            <h3 style={{ margin: '0 0 10px 0', fontSize: '16px' }}>📊 Audio Debug Info</h3>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-              <div>
-                <strong>Current Level:</strong> <span style={{ fontWeight: 'bold', color: '#2196f3' }}>{audioLevel.toFixed(1)}</span>
-              </div>
-              <div>
-                <strong>Peak Level:</strong> <span style={{ fontWeight: 'bold', color: '#f44336' }}>{peakLevel.toFixed(1)}</span>
-              </div>
-              <div>
-                <strong>Thresholds:</strong> Speech={AUDIO_SETTINGS.SPEECH_THRESHOLD}, Silence={AUDIO_SETTINGS.SILENCE_THRESHOLD}
-              </div>
-              <div style={{
-                marginTop: '10px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-              }}>
-                <strong>Continuous Conversation:</strong>
-                <span style={{
-                  color: continuousConversation ? '#4caf50' : '#f44336',
-                  fontWeight: 'bold'
-                }}>
-                  {continuousConversation ? 'ON' : 'OFF'}
-                </span>
-              </div>
-            </div>
-
-            {/* Audio level graph */}
-            <div style={{
-              height: '50px',
-              backgroundColor: '#eee',
-              marginBottom: '10px',
-              position: 'relative',
-              borderRadius: '4px',
-              overflow: 'hidden'
-            }}>
-              {/* Threshold lines */}
-              <div style={{
-                position: 'absolute',
-                left: 0,
-                right: 0,
-                top: `${50 - (AUDIO_SETTINGS.SPEECH_THRESHOLD/40 * 50)}px`,
-                borderTop: '1px dashed green',
-                zIndex: 1
-              }} />
-              <div style={{
-                position: 'absolute',
-                left: 0,
-                right: 0,
-                top: `${50 - (AUDIO_SETTINGS.SILENCE_THRESHOLD/40 * 50)}px`,
-                borderTop: '1px dashed orange',
-                zIndex: 1
-              }} />
-
-              {/* Sample bars */}
-              <div style={{ display: 'flex', height: '100%', alignItems: 'flex-end' }}>
-                {audioSamples.map((sample, index) => (
-                  <div
-                    key={index}
-                    style={{
-                      width: `${100/50}%`,
-                      height: `${Math.min(sample/40 * 100, 100)}%`,
-                      backgroundColor: sample > AUDIO_SETTINGS.SPEECH_THRESHOLD
-                        ? '#4caf50'
-                        : sample > AUDIO_SETTINGS.SILENCE_THRESHOLD
-                          ? '#ff9800'
-                          : '#bdbdbd',
-                      transition: 'height 0.1s'
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* State indicators */}
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '5px' }}>
-              <div style={{
-                flex: 1,
-                padding: '6px 10px',
-                borderRadius: '4px',
-                backgroundColor: isRecording ? '#e8f5e9' : '#f5f5f5',
-                color: isRecording ? '#2e7d32' : '#757575',
-                border: '1px solid #ddd',
-                textAlign: 'center',
-                fontWeight: 'bold'
-              }}>
-                Recording: {isRecording ? 'YES' : 'NO'}
-              </div>
-              <div style={{
-                flex: 1,
-                padding: '6px 10px',
-                borderRadius: '4px',
-                backgroundColor: hasSpeech ? '#e8f5e9' : '#f5f5f5',
-                color: hasSpeech ? '#2e7d32' : '#757575',
-                border: '1px solid #ddd',
-                textAlign: 'center',
-                fontWeight: 'bold'
-              }}>
-                Speech: {hasSpeech ? 'YES' : 'NO'}
-              </div>
-              <div style={{
-                flex: 1,
-                padding: '6px 10px',
-                borderRadius: '4px',
-                backgroundColor: silenceDetected ? '#fff3e0' : '#f5f5f5',
-                color: silenceDetected ? '#e65100' : '#757575',
-                border: '1px solid #ddd',
-                textAlign: 'center',
-                fontWeight: 'bold'
-              }}>
-                Silence: {silenceDetected ? 'YES' : 'NO'}
-              </div>
-            </div>
-
-            <div style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
-              <strong>Status:</strong> {statusMessage}
-            </div>
-          </div>
-        )}
-
-        {/* Control panel */}
-        <div className="controls-container">
-          <div className="tempo-control">
-            <label htmlFor="tempo">Speech Speed:</label>
-            <input
-              type="range"
-              id="tempo"
-              min="0.5"
-              max="1.5"
-              step="0.1"
-              value={tempo}
-              onChange={(e) => setTempo(parseFloat(e.target.value))}
-            />
-            <span>{tempo < 0.8 ? 'Slow' : tempo > 1.2 ? 'Fast' : 'Normal'}</span>
-          </div>
-
-          <div className="difficulty-control">
-            <label htmlFor="difficulty">Difficulty:</label>
+        <div className="header-controls">
+          <div className="control-group">
+            <label>Difficulty</label>
             <select
-              id="difficulty"
               value={difficulty}
               onChange={(e) => setDifficulty(e.target.value)}
-              className="difficulty-select"
+              className="select-control"
             >
               <option value="beginner">Beginner</option>
               <option value="intermediate">Intermediate</option>
@@ -549,225 +411,193 @@ const SpanishTutor = () => {
             </select>
           </div>
 
-          <div className="voice-input-toggle">
-            <button
-              onClick={toggleVoiceInput}
-              disabled={isLoading}
-              style={{
-                backgroundColor: voiceInputEnabled ? '#128c7e' : '#f1f1f1',
-                color: voiceInputEnabled ? 'white' : '#333',
-                border: '1px solid #ddd',
-                borderRadius: '5px',
-                padding: '6px 12px',
-              }}
-            >
-              <span>Voice Input:</span>
-              <strong>{voiceInputEnabled ? 'ON' : 'OFF'}</strong>
-            </button>
+          <div className="control-group">
+            <label>Speech Speed</label>
+            <div className="slider-container">
+              <input
+                type="range"
+                min="0.5"
+                max="1.5"
+                step="0.1"
+                value={tempo}
+                onChange={(e) => setTempo(parseFloat(e.target.value))}
+                className="slider"
+              />
+              <span className="slider-value">
+                {tempo < 0.8 ? 'Slow' : tempo > 1.2 ? 'Fast' : 'Normal'}
+              </span>
+            </div>
           </div>
-          {voiceInputEnabled && (
-          <div className="continuous-conversation-toggle" style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '10px',
-            marginTop: '10px',
-            width: '100%'
-          }}>
+
+          <div className="control-group voice-controls">
             <ToggleSwitch
-              isOn={continuousConversation}
-              handleToggle={() => setContinuousConversation(!continuousConversation)}
-              label="Continuous Conversation"
-              disabled={!voiceInputEnabled}
+              isOn={voiceInputEnabled}
+              handleToggle={toggleVoiceInput}
+              label="Voice Input"
             />
+
+            {voiceInputEnabled && (
+              <ToggleSwitch
+                isOn={continuousConversation}
+                handleToggle={() => setContinuousConversation(!continuousConversation)}
+                label="Continuous Mode"
+                disabled={!voiceInputEnabled}
+              />
+            )}
           </div>
-        )}
+
+          <button
+            className="debug-toggle"
+            onClick={() => setDebugMode(!debugMode)}
+          >
+            {debugMode ? 'Hide Debug' : 'Show Debug'}
+          </button>
         </div>
       </div>
 
-      {/* Conversation area */}
-      <div className="conversation">
+      {debugMode && (
+        <div className="debug-panel">
+          <div className="debug-info">
+            <div className="debug-metrics">
+              <div className="metric">
+                <span className="metric-label">Level</span>
+                <span className="metric-value">{audioLevel.toFixed(1)}</span>
+              </div>
+              <div className="metric">
+                <span className="metric-label">Peak</span>
+                <span className="metric-value">{peakLevel.toFixed(1)}</span>
+              </div>
+              <div className="metric">
+                <span className="metric-label">Status</span>
+                <span className="metric-value status">{statusMessage}</span>
+              </div>
+            </div>
+
+            <div className="debug-status-pills">
+              <StatusPill
+                active={isRecording}
+                icon="🎙️"
+                label="Recording"
+              />
+              <StatusPill
+                active={hasSpeech}
+                icon="🗣️"
+                label="Speech"
+              />
+              <StatusPill
+                active={silenceDetected}
+                icon="🔇"
+                label="Silence"
+              />
+              {silenceDetected && silenceCountdown !== null && (
+                <div className="countdown-timer">{silenceCountdown}s</div>
+              )}
+            </div>
+
+            <AudioVisualizer
+              audioSamples={audioSamples}
+              speechThreshold={AUDIO_SETTINGS.SPEECH_THRESHOLD}
+              silenceThreshold={AUDIO_SETTINGS.SILENCE_THRESHOLD}
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="conversation-container">
         {history.length === 0 ? (
           <div className="empty-state">
-            <p>¡Hola! Soy tu tutor de español. ¿Cómo puedo ayudarte hoy?</p>
-            <p className="empty-state-subtitle">Start chatting in Spanish to practice!</p>
+            <div className="welcome-icon">👋</div>
+            <h2>¡Hola! Soy tu tutor de español.</h2>
+            <p>Start practicing your Spanish conversation skills!</p>
           </div>
         ) : (
-          history.map((msg, index) => (
-            <div
-              key={index}
-              className={`message ${msg.role === 'user' ? 'user' : 'assistant'}`}
-            >
-              {renderMessageContent(msg)}
-            </div>
-          ))
-        )}
+          <div className="messages">
+            {history.map((msg, index) => (
+              <Message key={index} message={msg} />
+            ))}
 
-        {isLoading && (
-          <div className="message assistant loading">
-            <div className="typing-indicator">
-              <span></span>
-              <span></span>
-              <span></span>
-            </div>
+            {isLoading && (
+              <div className="message assistant loading">
+                <div className="typing-indicator">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
           </div>
         )}
-
-        <div ref={messagesEndRef} />
       </div>
 
-      {/* Input section */}
       <div className="input-container">
         {voiceInputEnabled ? (
           <div className="voice-input-controls">
-            {/* Record button with visual feedback */}
             <button
-              className={`voice-record-button ${isRecording ? 'recording' : ''}`}
+              className={`voice-button ${isRecording ? 'recording' : ''} ${isProcessing ? 'processing' : ''}`}
               onClick={handleVoiceButtonClick}
-              disabled={isLoading || isProcessing}
-              type="button"
-              style={{
-                backgroundColor: isRecording ? '#e53935' : isProcessing ? '#FFA000' : '#128c7e',
-                color: 'white',
-                padding: '12px 20px',
-                border: 'none',
-                borderRadius: '20px',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                fontSize: '16px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto',
-                boxShadow: isRecording ? '0 0 0 rgba(229, 57, 53, 0.4)' : 'none',
-                animation: isRecording ? 'pulse 1.5s infinite' : 'none',
-                transition: 'all 0.2s ease',
-                width: '220px'
-              }}
+              disabled={isProcessing}
             >
-              {isRecording
-                ? 'Stop Recording'
-                : isProcessing
-                  ? 'Processing...'
-                  : 'Start Recording'}
+              {isRecording ? (
+                <>
+                  <span className="pulse"></span>
+                  <span className="mic-icon">🎙️</span>
+                  <span className="button-text">Stop Recording</span>
+                </>
+              ) : isProcessing ? (
+                <>
+                  <span className="processing-icon">⏳</span>
+                  <span className="button-text">Processing...</span>
+                </>
+              ) : (
+                <>
+                  <span className="mic-icon">🎙️</span>
+                  <span className="button-text">Start Recording</span>
+                </>
+              )}
             </button>
 
-            {/* Visual recording indicators */}
             {isRecording && (
-              <div style={{
-                marginTop: '15px',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center'
-              }}>
-                {/* Main status indicator */}
-                <div style={{
-                  backgroundColor: silenceDetected ? '#fff3e0' : hasSpeech ? '#e8f5e9' : '#f5f5f5',
-                  color: silenceDetected ? '#e65100' : hasSpeech ? '#2e7d32' : '#666',
-                  padding: '8px 16px',
-                  borderRadius: '20px',
-                  fontWeight: 'bold',
-                  marginBottom: '10px',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                  border: `1px solid ${silenceDetected ? '#ffccbc' : hasSpeech ? '#c8e6c9' : '#e0e0e0'}`,
-                  textAlign: 'center',
-                  width: '100%',
-                  maxWidth: '350px'
-                }}>
-                  {silenceDetected
-                    ? silenceCountdown !== null
-                      ? `Silence detected - auto-submitting in ${silenceCountdown}s`
-                      : 'Silence detected - will auto-submit shortly...'
-                    : hasSpeech
-                      ? 'Recording... Keep speaking or pause for auto-submit'
-                      : 'Waiting for speech...'}
-                </div>
-
-                {/* Real-time audio level meter */}
-                <div style={{
-                  width: '100%',
-                  maxWidth: '350px',
-                  height: '20px',
-                  backgroundColor: '#f5f5f5',
-                  borderRadius: '10px',
-                  overflow: 'hidden',
-                  marginBottom: '10px',
-                  border: '1px solid #e0e0e0'
-                }}>
-                  <div style={{
-                    height: '100%',
-                    width: `${Math.min(audioLevel * 5, 100)}%`,
-                    backgroundColor: audioLevel > AUDIO_SETTINGS.SPEECH_THRESHOLD
-                      ? '#4caf50'
-                      : audioLevel > AUDIO_SETTINGS.SILENCE_THRESHOLD
-                        ? '#ff9800'
-                        : '#bdbdbd',
-                    transition: 'width 0.1s'
-                  }} />
-                </div>
-
-                {/* Status flags */}
-                <div style={{
-                  display: 'flex',
-                  gap: '15px',
-                  justifyContent: 'center',
-                  width: '100%'
-                }}>
-                  <div style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    padding: '10px 15px',
-                    borderRadius: '10px',
-                    backgroundColor: hasSpeech ? '#e8f5e9' : '#f5f5f5',
-                    color: hasSpeech ? '#2e7d32' : '#9e9e9e',
-                    opacity: hasSpeech ? 1 : 0.7,
-                    border: `1px solid ${hasSpeech ? '#c8e6c9' : '#e0e0e0'}`,
-                    flex: 1,
-                    maxWidth: '150px',
-                    boxShadow: hasSpeech ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
-                    transition: 'all 0.3s ease'
-                  }}>
-                    <span style={{ fontSize: '20px', marginBottom: '5px' }}>🎤</span>
-                    <span style={{ fontSize: '14px', fontWeight: 'bold' }}>
-                      Speech Detected
-                    </span>
-                  </div>
-
-                  <div style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    padding: '10px 15px',
-                    borderRadius: '10px',
-                    backgroundColor: silenceDetected ? '#fff3e0' : '#f5f5f5',
-                    color: silenceDetected ? '#e65100' : '#9e9e9e',
-                    opacity: silenceDetected ? 1 : 0.7,
-                    border: `1px solid ${silenceDetected ? '#ffccbc' : '#e0e0e0'}`,
-                    flex: 1,
-                    maxWidth: '150px',
-                    boxShadow: silenceDetected ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
-                    transition: 'all 0.3s ease'
-                  }}>
-                    <span style={{ fontSize: '20px', marginBottom: '5px' }}>🔇</span>
-                    <span style={{ fontSize: '14px', fontWeight: 'bold' }}>
-                      Silence Detected
-                    </span>
-                  </div>
-                </div>
+              <div className={`recording-status ${silenceDetected ? 'silence' : hasSpeech ? 'speech' : 'waiting'}`}>
+                {silenceDetected
+                  ? (
+                    <>
+                      <span className="status-icon">🔇</span>
+                      <span>Silence detected - will auto-submit {silenceCountdown ? `in ${silenceCountdown}s` : 'shortly'}</span>
+                    </>
+                  )
+                  : hasSpeech
+                    ? (
+                      <>
+                        <span className="status-icon">🗣️</span>
+                        <span>Recording your speech... Pause to auto-submit</span>
+                      </>
+                    )
+                    : (
+                      <>
+                        <span className="status-icon">👂</span>
+                        <span>Waiting for speech...</span>
+                      </>
+                    )
+                }
               </div>
             )}
           </div>
         ) : (
-          <form className="message-input" onSubmit={handleSubmit}>
+          <form className="text-input-form" onSubmit={handleSubmit}>
             <input
               type="text"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               placeholder="Escribe tu mensaje aquí..."
               disabled={isLoading}
+              className="text-input"
             />
-            <button type="submit" disabled={isLoading || !message.trim()}>
+            <button
+              type="submit"
+              disabled={isLoading || !message.trim()}
+              className="send-button"
+            >
               Enviar
             </button>
           </form>
