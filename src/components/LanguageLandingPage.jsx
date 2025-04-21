@@ -4,9 +4,9 @@ const LanguageLandingPage = ({ onLanguageSelect }) => {
   const [nativeLanguage, setNativeLanguage] = useState('');
   const [targetLanguage, setTargetLanguage] = useState('');
   const [difficulty, setDifficulty] = useState('beginner');
+  const [learningObjective, setLearningObjective] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Available languages
   const languages = [
     { code: 'en', name: 'English', flag: '🇬🇧' },
     { code: 'es', name: 'Spanish', flag: '🇪🇸' }
@@ -19,13 +19,13 @@ const LanguageLandingPage = ({ onLanguageSelect }) => {
 
     setIsLoading(true);
 
-    // Simulate loading and then pass the selection to parent component
     setTimeout(() => {
       if (onLanguageSelect) {
         onLanguageSelect({
           nativeLanguage,
           targetLanguage,
-          difficulty
+          difficulty,
+          learningObjective: learningObjective.trim() // Include the learning objective
         });
       }
       setIsLoading(false);
@@ -96,6 +96,23 @@ const LanguageLandingPage = ({ onLanguageSelect }) => {
                 </span>
               </div>
             ))}
+          </div>
+        </div>
+
+        <div className="language-section">
+          <h3>What would you like to practice? (Optional)</h3>
+          <div className="objective-input-container">
+            <textarea
+              className="objective-input"
+              value={learningObjective}
+              onChange={(e) => setLearningObjective(e.target.value)}
+              placeholder="Examples:
+• I want to practice ordering food at restaurants
+• Help me with past tense conjugation
+• Let's discuss travel and vacations
+• I need help with business vocabulary"
+              rows={4}
+            />
           </div>
         </div>
 

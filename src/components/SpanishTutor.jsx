@@ -27,7 +27,6 @@ const AudioVisualizer = ({ audioSamples, speechThreshold, silenceThreshold }) =>
       <div className="threshold-line silence" style={{ bottom: `${silenceThreshold * 100 / 120}%` }}></div>
       <div className="sample-bars">
         {audioSamples.length === 0 ? (
-          // Display placeholder bars when no samples are available
           Array.from({ length: 50 }).map((_, index) => (
             <div
               key={index}
@@ -36,7 +35,6 @@ const AudioVisualizer = ({ audioSamples, speechThreshold, silenceThreshold }) =>
             />
           ))
         ) : (
-          // Display actual audio sample bars
           audioSamples.map((sample, index) => (
             <div
               key={index}
@@ -60,7 +58,12 @@ const StatusPill = ({ active, icon, label }) => {
   );
 };
 
-const SpanishTutor = ({ nativeLanguage = 'en', targetLanguage = 'es', initialDifficulty = 'beginner' }) => {
+const SpanishTutor = ({
+  nativeLanguage = 'en',
+  targetLanguage = 'es',
+  initialDifficulty = 'beginner',
+  learningObjective = ''
+}) => {
   // Core state
   const [message, setMessage] = useState('');
   const [conversationId, setConversationId] = useState(null);
@@ -86,7 +89,6 @@ const SpanishTutor = ({ nativeLanguage = 'en', targetLanguage = 'es', initialDif
     return languages[code] || { name: 'Unknown', flag: '🏳️' };
   };
 
-  const nativeInfo = getLanguageInfo(nativeLanguage);
   const targetInfo = getLanguageInfo(targetLanguage);
 
   // Use our custom voice recorder hook
@@ -122,7 +124,6 @@ const SpanishTutor = ({ nativeLanguage = 'en', targetLanguage = 'es', initialDif
   // Handle media recorder stop event
   useEffect(() => {
     if (!isRecording && hasSpeech && !isProcessing) {
-      // This means recording was stopped after detecting speech
       handleAudioData();
     }
   }, [isRecording, hasSpeech, isProcessing]);
@@ -158,9 +159,8 @@ const SpanishTutor = ({ nativeLanguage = 'en', targetLanguage = 'es', initialDif
 
   // Welcome message when the component mounts
   useEffect(() => {
-    // Only show welcome message if this is a new conversation
     if (history.length === 0) {
-      const welcomeMessage = {
+      let welcomeMessage = {
         role: 'assistant',
         content: targetLanguage === 'es'
           ? '¡Hola! Soy tu tutor de español. ¿Cómo puedo ayudarte hoy?'
@@ -168,15 +168,24 @@ const SpanishTutor = ({ nativeLanguage = 'en', targetLanguage = 'es', initialDif
         timestamp: new Date().toISOString()
       };
 
+      // Add learning objective to welcome message if provided
+      if (learningObjective) {
+        welcomeMessage = {
+          ...welcomeMessage,
+          content: targetLanguage === 'es'
+            ? `¡Hola! Veo que quieres practicar: "${learningObjective}". ¡Empecemos!`
+            : `Hello! I see you want to practice: "${learningObjective}". Let's begin!`
+        };
+      }
+
       setHistory([welcomeMessage]);
     }
-  }, [targetLanguage]);
+  }, [targetLanguage, learningObjective]);
 
   // Text chat handler
   const handleSubmit = async (inputMessage) => {
     if (!inputMessage.trim() || isLoading) return;
 
-    // Add user message to UI immediately
     const userMessage = {
       role: 'user',
       content: inputMessage,
@@ -187,7 +196,6 @@ const SpanishTutor = ({ nativeLanguage = 'en', targetLanguage = 'es', initialDif
     setIsLoading(true);
 
     try {
-      // Send chat request to API
       const response = await fetch(`${API_URL}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -198,6 +206,7 @@ const SpanishTutor = ({ nativeLanguage = 'en', targetLanguage = 'es', initialDif
           difficulty,
           native_language: nativeLanguage,
           target_language: targetLanguage,
+          learning_objective: learningObjective // Include learning objective in request
         }),
       });
 
@@ -226,7 +235,6 @@ const SpanishTutor = ({ nativeLanguage = 'en', targetLanguage = 'es', initialDif
       }
     } catch (error) {
       console.error('Error sending message:', error);
-
       setHistory(prev => [
         ...prev,
         {
@@ -263,7 +271,7 @@ const SpanishTutor = ({ nativeLanguage = 'en', targetLanguage = 'es', initialDif
       };
       setHistory(prev => [...prev, tempMessage]);
 
-      // Create form data for API
+      // Create form data
       const formData = new FormData();
       formData.append('audio_file', audioBlob, 'recording.webm');
       if (conversationId) {
@@ -273,8 +281,8 @@ const SpanishTutor = ({ nativeLanguage = 'en', targetLanguage = 'es', initialDif
       formData.append('difficulty', difficulty);
       formData.append('native_language', nativeLanguage);
       formData.append('target_language', targetLanguage);
+      formData.append('learning_objective', learningObjective); // Include learning objective
 
-      // Send to server
       setStatusMessage('Sending audio to server...');
       const response = await fetch(`${API_URL}/voice-input`, {
         method: 'POST',
@@ -356,7 +364,6 @@ const SpanishTutor = ({ nativeLanguage = 'en', targetLanguage = 'es', initialDif
   const handleAudioEnded = () => {
     setIsPlaying(false);
 
-    // Start recording again if continuous conversation is enabled
     if (continuousConversation && voiceInputEnabled) {
       if (!isRecording && !isProcessing) {
         startRecording();
@@ -528,6 +535,8 @@ const SpanishTutor = ({ nativeLanguage = 'en', targetLanguage = 'es', initialDif
           </button>
         </div>
       )}
+
+      <div ref={messagesEndRef} />
     </div>
   );
 };
