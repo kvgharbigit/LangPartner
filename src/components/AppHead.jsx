@@ -1,16 +1,15 @@
 import React, { useState } from 'react';
 import '../App.css';
-import './LangLearnLanding.css'; // Local import from same directory
-import './AppHeader.css'; // Local import from same directory
+import './LangLearnLanding.css';
+import './AppHeader.css';
 import SpanishTutor from './SpanishTutor';
 import LanguageLandingPage from './LanguageLandingPage';
-
 
 function AppHead() {
   const [selectedLanguages, setSelectedLanguages] = useState(null);
 
-  const handleLanguageSelect = (languages) => {
-    setSelectedLanguages(languages);
+  const handleLanguageSelect = (settings) => {
+    setSelectedLanguages(settings);
   };
 
   // If languages aren't selected yet, show landing page
@@ -42,10 +41,11 @@ function AppHead() {
         </div>
       </div>
 
-      {/* Render the Spanish Tutor component with the selected languages */}
+      {/* Render the Spanish Tutor component with the selected languages and difficulty */}
       <SpanishTutor
         nativeLanguage={selectedLanguages.nativeLanguage}
         targetLanguage={selectedLanguages.targetLanguage}
+        initialDifficulty={selectedLanguages.difficulty}
       />
     </div>
   );

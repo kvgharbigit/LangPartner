@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import useVoiceRecorder from './useVoiceRecorder';
 import { Conversation } from './ChatComponents';
 import ChatInput from './ChatInput';
+import TutorHeader from './TutorHeader';
 import './SpanishTutor.css';
 
 const API_URL = 'http://localhost:8036';
@@ -16,24 +17,6 @@ const AUDIO_SETTINGS = {
   CHECK_INTERVAL: 50,
   FFT_SIZE: 128,
   SMOOTHING: 0.1
-};
-
-// Toggle Switch Component
-const ToggleSwitch = ({ isOn, handleToggle, label = '', disabled = false }) => {
-  return (
-    <div className="toggle-switch-component">
-      <label className="label">{label}</label>
-      <label className="switch">
-        <input
-          type="checkbox"
-          checked={isOn}
-          onChange={handleToggle}
-          disabled={disabled}
-        />
-        <span className="slider"></span>
-      </label>
-    </div>
-  );
 };
 
 // Audio Visualizer Component
@@ -77,7 +60,7 @@ const StatusPill = ({ active, icon, label }) => {
   );
 };
 
-const SpanishTutor = ({ nativeLanguage = 'en', targetLanguage = 'es' }) => {
+const SpanishTutor = ({ nativeLanguage = 'en', targetLanguage = 'es', initialDifficulty = 'beginner' }) => {
   // Core state
   const [message, setMessage] = useState('');
   const [conversationId, setConversationId] = useState(null);
@@ -85,7 +68,7 @@ const SpanishTutor = ({ nativeLanguage = 'en', targetLanguage = 'es' }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [tempo, setTempo] = useState(0.75);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [difficulty, setDifficulty] = useState('beginner');
+  const [difficulty, setDifficulty] = useState(initialDifficulty);
   const [voiceInputEnabled, setVoiceInputEnabled] = useState(false);
   const [debugMode, setDebugMode] = useState(false);
   const [continuousConversation, setContinuousConversation] = useState(false);
@@ -400,69 +383,18 @@ const SpanishTutor = ({ nativeLanguage = 'en', targetLanguage = 'es' }) => {
 
   return (
     <div className="tutor-container">
-      <div className="tutor-header">
-        <div className="tutor-logo">
-          <span className="flag">{targetInfo.flag}</span>
-          <h1>{targetInfo.name} Tutor</h1>
-        </div>
-
-        <div className="header-controls">
-          <div className="control-group">
-            <label>Difficulty</label>
-            <select
-              value={difficulty}
-              onChange={(e) => setDifficulty(e.target.value)}
-              className="select-control"
-            >
-              <option value="beginner">Beginner</option>
-              <option value="intermediate">Intermediate</option>
-              <option value="advanced">Advanced</option>
-            </select>
-          </div>
-
-          <div className="control-group">
-            <label>Speech Speed</label>
-            <div className="slider-container">
-              <input
-                type="range"
-                min="0.5"
-                max="1.5"
-                step="0.1"
-                value={tempo}
-                onChange={(e) => setTempo(parseFloat(e.target.value))}
-                className="slider"
-              />
-              <span className="slider-value">
-                {tempo < 0.8 ? 'Slow' : tempo > 1.2 ? 'Fast' : 'Normal'}
-              </span>
-            </div>
-          </div>
-
-          <div className="control-group voice-controls">
-            <ToggleSwitch
-              isOn={voiceInputEnabled}
-              handleToggle={toggleVoiceInput}
-              label="Voice Input"
-            />
-
-            {voiceInputEnabled && (
-              <ToggleSwitch
-                isOn={continuousConversation}
-                handleToggle={() => setContinuousConversation(!continuousConversation)}
-                label="Continuous Mode"
-                disabled={!voiceInputEnabled}
-              />
-            )}
-          </div>
-
-          <button
-            className="debug-toggle"
-            onClick={() => setDebugMode(!debugMode)}
-          >
-            {debugMode ? 'Hide Debug' : 'Show Debug'}
-          </button>
-        </div>
-      </div>
+      <TutorHeader
+        targetLanguage={targetLanguage}
+        targetInfo={targetInfo}
+        tempo={tempo}
+        setTempo={setTempo}
+        voiceInputEnabled={voiceInputEnabled}
+        toggleVoiceInput={toggleVoiceInput}
+        continuousConversation={continuousConversation}
+        setContinuousConversation={setContinuousConversation}
+        debugMode={debugMode}
+        setDebugMode={setDebugMode}
+      />
 
       {debugMode && (
         <div className="debug-panel">

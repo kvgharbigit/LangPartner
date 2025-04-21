@@ -1,26 +1,33 @@
-// ChatComponents.jsx
+// ChatComponents.jsx - Improved text normalization and comparison
 import React from 'react';
 
-// Utility function to normalize text for comparison
+// Enhanced utility function to normalize text for comparison
 const normalizeText = (text) => {
   if (!text) return '';
   return text
     .toLowerCase()
-    .replace(/[.,;:?!'"()[\]{}\-_@#$%^&*+=<>]/g, '')  // Remove all punctuation
-    .replace(/\s+/g, ' ')  // Replace multiple spaces with single space
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // Remove accents (á -> a, é -> e, etc.)
+    .replace(/[.,;:¿?!¡'"()[\]{}\-_@#$%^&*+=<>]/g, '') // Remove all punctuation including Spanish punctuation
+    .replace(/\s+/g, ' ') // Replace multiple spaces with single space
     .trim();
+};
+
+// Semantic comparison to determine if messages are equivalent in meaning
+const areMessagesEquivalent = (original, suggestion) => {
+  const normalizedOriginal = normalizeText(original);
+  const normalizedSuggestion = normalizeText(suggestion);
+
+  return normalizedOriginal === normalizedSuggestion;
 };
 
 // Function to find and highlight differences
 const highlightDifferences = (original, suggestion) => {
   if (!original || !suggestion) return suggestion;
 
-  // Normalize texts for comparison
-  const normalizedOriginal = normalizeText(original);
-  const normalizedSuggestion = normalizeText(suggestion);
-
-  // If texts are identical after normalization, return the suggestion as-is
-  if (normalizedOriginal === normalizedSuggestion) return suggestion;
+  // First check if they're equivalent after normalization
+  if (areMessagesEquivalent(original, suggestion)) {
+    return suggestion; // Return suggestion as-is if they're equivalent
+  }
 
   // Split suggestion into words, preserving original capitalization and punctuation
   const suggestionWords = suggestion.split(/\s+/);
@@ -45,29 +52,25 @@ const highlightDifferences = (original, suggestion) => {
 
 // Message Component
 const Message = ({ message, originalUserMessage }) => {
-  // Log the full message object for debugging
-  console.log('Full Message Object:', message);
-  console.log('Original User Message:', originalUserMessage);
-
   // Only apply normalization to the original user message
-  const normalizedUserMessage = normalizeText(originalUserMessage || message.content);
+  const normalizedUserMessage = originalUserMessage ? normalizeText(originalUserMessage) : '';
 
   // Normalize grammar and native suggestions if they exist
   const normalizedNative = message.natural ? normalizeText(message.natural) : '';
   const normalizedCorrected = message.corrected ? normalizeText(message.corrected) : '';
 
   // Check if suggestions match the original user message
-  const isIdenticalToNative = normalizedNative && normalizedUserMessage === normalizedNative;
-  const isIdenticalToCorrected = normalizedCorrected && normalizedUserMessage === normalizedCorrected;
+  const isEquivalentToNative = message.natural && normalizedUserMessage === normalizedNative;
+  const isEquivalentToCorrected = message.corrected && normalizedUserMessage === normalizedCorrected;
 
-  // Highlight differences in suggestions
-  const highlightedNative = isIdenticalToNative
+  // Highlight differences in suggestions only if they're not equivalent
+  const highlightedNative = isEquivalentToNative
     ? message.natural
     : (originalUserMessage
         ? highlightDifferences(originalUserMessage, message.natural)
         : message.natural);
 
-  const highlightedCorrected = isIdenticalToCorrected
+  const highlightedCorrected = isEquivalentToCorrected
     ? message.corrected
     : (originalUserMessage
         ? highlightDifferences(originalUserMessage, message.corrected)
@@ -79,7 +82,7 @@ const Message = ({ message, originalUserMessage }) => {
         <p className="main-text">{message.content}</p>
 
         {message.corrected && (
-          <div className={`message-annotation grammar-hint ${isIdenticalToCorrected ? 'identical' : ''}`}>
+          <div className={`message-annotation grammar-hint ${isEquivalentToCorrected ? 'identical' : ''}`}>
             <span className="annotation-label">Grammar:</span>
             <span
               className="annotation-text"
@@ -88,14 +91,14 @@ const Message = ({ message, originalUserMessage }) => {
               }}
             >
             </span>
-            {isIdenticalToCorrected && (
+            {isEquivalentToCorrected && (
               <span className="native-match-icon">✅</span>
             )}
           </div>
         )}
 
         {message.natural && (
-          <div className={`message-annotation native-hint ${isIdenticalToNative ? 'identical' : ''}`}>
+          <div className={`message-annotation native-hint ${isEquivalentToNative ? 'identical' : ''}`}>
             <span className="annotation-label">Native:</span>
             <span
               className="annotation-text"
@@ -104,7 +107,7 @@ const Message = ({ message, originalUserMessage }) => {
               }}
             >
             </span>
-            {isIdenticalToNative && (
+            {isEquivalentToNative && (
               <span className="native-match-icon">✅</span>
             )}
           </div>

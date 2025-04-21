@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 const LanguageLandingPage = ({ onLanguageSelect }) => {
   const [nativeLanguage, setNativeLanguage] = useState('');
   const [targetLanguage, setTargetLanguage] = useState('');
+  const [difficulty, setDifficulty] = useState('beginner');
   const [isLoading, setIsLoading] = useState(false);
 
   // Available languages
@@ -23,7 +24,8 @@ const LanguageLandingPage = ({ onLanguageSelect }) => {
       if (onLanguageSelect) {
         onLanguageSelect({
           nativeLanguage,
-          targetLanguage
+          targetLanguage,
+          difficulty
         });
       }
       setIsLoading(false);
@@ -72,6 +74,26 @@ const LanguageLandingPage = ({ onLanguageSelect }) => {
                     <span>Already speak</span>
                   </div>
                 )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="language-section">
+          <h3>My level:</h3>
+          <div className="difficulty-options">
+            {['beginner', 'intermediate', 'advanced'].map(level => (
+              <div
+                key={level}
+                className={`language-option ${difficulty === level ? 'selected' : ''}`}
+                onClick={() => setDifficulty(level)}
+              >
+                <span className="difficulty-icon">
+                  {level === 'beginner' ? '🌱' : level === 'intermediate' ? '🌿' : '🌳'}
+                </span>
+                <span className="language-name">
+                  {level.charAt(0).toUpperCase() + level.slice(1)}
+                </span>
               </div>
             ))}
           </div>

@@ -265,3 +265,42 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/*Difficulty checking*/
+
+/* Add these to your existing LangLearnLanding.css */
+
+.difficulty-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 1rem;
+}
+
+.difficulty-icon {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Update existing language-option to handle both language and difficulty selections */
+.language-option {
+  position: relative;
+  background: var(--gray-100);
+  border: 2px solid var(--gray-300);
+  border-radius: var(--rounded-md);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  transition: var(--transition-base);
+}
+
+.language-option:hover {
+  border-color: var(--primary-light);
+  transform: translateY(-2px);
+}
+
+.language-option.selected {
+  border-color: var(--primary);
+  background-color: rgba(93, 106, 248, 0.05);
+}
