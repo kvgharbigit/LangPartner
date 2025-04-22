@@ -6,7 +6,7 @@ import ChatInput from './ChatInput';
 import TutorHeader from './TutorHeader';
 import './SpanishTutor.css';
 
-const API_URL = 'http://localhost:8004';
+const API_URL = 'http://localhost:8005';
 
 // Audio settings
 const AUDIO_SETTINGS = {
